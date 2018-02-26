@@ -1,18 +1,18 @@
 package com.yashoid.wordcloud;
 
-import android.content.Context;
 import android.graphics.Bitmap;
 import android.graphics.Canvas;
 import android.graphics.Paint;
 import android.graphics.Point;
+import android.graphics.PointF;
 import android.graphics.Rect;
 import android.graphics.RectF;
 import android.graphics.Typeface;
 import android.os.Handler;
 import android.support.annotation.NonNull;
-import android.util.SparseIntArray;
 
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.Random;
 
@@ -32,6 +32,16 @@ public class WordCloud<T> {
         CLEAR_PAINT.setColor(0);
         CLEAR_PAINT.setStyle(Paint.Style.FILL);
     }
+
+    public interface EventListener<T> {
+
+        void onWordPlaced(T word);
+
+        void onAllWordsPlaced();
+
+    }
+
+    private EventListener<T> mEventListener = null;
 
     private Point size = new Point(256, 256);
     private TextProvider<T> text = TextProvider.DEFAULT;
@@ -60,6 +70,10 @@ public class WordCloud<T> {
     private ArrayList<ProcessedWord> processedWords;
 
     private ArrayList<ProcessedWord> tags;
+
+    public void setEventListener(EventListener<T> listener) {
+        mEventListener = listener;
+    }
 
     public void setCanvas(Canvas canvas, Bitmap bitmap) {
         this.canvas = canvas;
@@ -112,7 +126,9 @@ public class WordCloud<T> {
                 if (word.hasText() && place(word)) {
                     tags.add(word);
 
-                    // TODO event.call("word", cloud, d);
+                    if (mEventListener != null) {
+                        mEventListener.onWordPlaced(words[i]);
+                    }
 
                     if (bounds != null) {
                         cloudBounds(word);
@@ -130,7 +146,9 @@ public class WordCloud<T> {
             if (i >= n) {
                 stop();
 
-                // TODO event.call("end", cloud, tags, bounds);
+                if (mEventListener != null) {
+                    mEventListener.onAllWordsPlaced();
+                }
             }
             else if (timer != null) {
                 timer.post(step);
@@ -154,6 +172,8 @@ public class WordCloud<T> {
             pw.rotate = rotate.getRotation(words[i], i);
             pw.size = fontSize.getTextSize(words[i], i);
             pw.padding = padding.getPadding(words[i], i);
+
+            processedWords.add(pw);
         }
 
         return processedWords;
@@ -236,16 +256,15 @@ public class WordCloud<T> {
         int[] pixels = new int[pixelsWidth * pixelsHeight];
         bitmap.getPixels(pixels, 0, 0, 0, 0, pixelsWidth, pixelsHeight);
 
-        SparseIntArray sprite = new SparseIntArray();
+        int w = (int) d.width;
+        int w32 = w >> 5;
+        int h = (int) (d.y1 - d.y0);
+
+        int[] sprite = new int[h * w32];
 
         while (--di >= 0) {
             if (!d.hasText) continue;
 
-            int w = (int) d.width;
-            int w32 = w >> 5;
-            int h = (int) (d.y1 - d.y0);
-            // Zero the buffer
-            for (int i = 0; i < h * w32; i++) sprite.put(i, 0);
             x = (int) d.xoff;
             //if (x == null) return;
             y = (int) d.yoff;
@@ -255,7 +274,7 @@ public class WordCloud<T> {
                 for (int i = 0; i < w; i++) {
                     int k = w32 * j + (i >> 5);
                     int m = pixels[((y + j) * (cw << 5) + (x + i)) << 2] != 0 ? 1 << (31 - (i % 32)) : 0;
-                    sprite.put(k, sprite.get(k) | m);
+                    sprite[k] = sprite[k] | m;
                     seen |= m;
                 }
                 if (seen != 0) seenRow = j;
@@ -268,76 +287,102 @@ public class WordCloud<T> {
             }
             d.y1 = d.y0 + seenRow;
 
-            d.sprite = sprite.slice(0, (d.y1 - d.y0) * w32);
+            d.sprite = Arrays.copyOfRange(sprite, 0, (int) (d.y1 - d.y0) * w32);
         }
     }
 
     private boolean place(ProcessedWord tag) {
-        return true;
-        /*
-          function place(board, tag, bounds) {
-    var perimeter = [{x: 0, y: 0}, {x: size[0], y: size[1]}],
-        startX = tag.x,
-        startY = tag.y,
-        maxDelta = Math.sqrt(size[0] * size[0] + size[1] * size[1]),
-        s = spiral(size),
-        dt = random() < .5 ? 1 : -1,
-        t = -dt,
-        dxdy,
-        dx,
-        dy;
+        Rect perimeter = new Rect(0, 0, size.x, size.y);
+        float startX = tag.x;
+        float startY = tag.y;
 
-    while (dxdy = s(t += dt)) {
-      dx = ~~dxdy[0];
-      dy = ~~dxdy[1];
+        double maxDelta = PointF.length(size.x, size.y);
 
-      if (Math.min(Math.abs(dx), Math.abs(dy)) >= maxDelta) break;
+//        s = spiral(size),
+        float dt = Math.random() < .5 ? 1 : -1;
+        float t = -dt;
+        PointF dxdy = new PointF();
+        int dx;
+        int dy;
 
-      tag.x = startX + dx;
-      tag.y = startY + dy;
+        spiral.getSpiralPoint(t += dt, size, dxdy);
 
-      if (tag.x + tag.x0 < 0 || tag.y + tag.y0 < 0 ||
-          tag.x + tag.x1 > size[0] || tag.y + tag.y1 > size[1]) continue;
-      // TODO only check for collisions within current bounds.
-      if (!bounds || !cloudCollide(tag, board, size[0])) {
-        if (!bounds || collideRects(tag, bounds)) {
-          var sprite = tag.sprite,
-              w = tag.width >> 5,
-              sw = size[0] >> 5,
-              lx = tag.x - (w << 4),
-              sx = lx & 0x7f,
-              msx = 32 - sx,
-              h = tag.y1 - tag.y0,
-              x = (tag.y + tag.y0) * sw + (lx >> 5),
-              last;
-          for (var j = 0; j < h; j++) {
+        while (dxdy != null) { // TODO WHAT?!
+            dx = (int) dxdy.x;
+            dy = (int) dxdy.y;
+
+            if (Math.min(Math.abs(dx), Math.abs(dy)) >= maxDelta) break;
+
+            tag.x = startX + dx;
+            tag.y = startY + dy;
+
+            if (tag.x + tag.x0 < 0 || tag.y + tag.y0 < 0 ||
+              tag.x + tag.x1 > size.x || tag.y + tag.y1 > size.y) continue;
+            // TODO only check for collisions within current bounds.
+            if ((bounds == null || bounds.isEmpty()) || !cloudCollide(tag, board, size.x)) {
+                if ((bounds == null || bounds.isEmpty()) || collideRects(tag, bounds)) {
+                    int[] sprite = tag.sprite;
+                    int w = (int) tag.width >> 5;
+                    int sw = size.x >> 5;
+                    int lx = (int) tag.x - (w << 4);
+                    int sx = lx & 0x7f;
+                    int msx = 32 - sx;
+                    float h = tag.y1 - tag.y0;
+                    int x = (int) (tag.y + tag.y0) * sw + (lx >> 5);
+                    int last;
+                    for (int j = 0; j < h; j++) {
+                    last = 0;
+                    for (int i = 0; i <= w; i++) {
+                      board[x + i] |= (last << msx) | (i < w ? (last = sprite[j * w + i]) >>> sx : 0);
+                    }
+                    x += sw;
+                    }
+                    tag.sprite = null;
+                    return true;
+                }
+            }
+
+            spiral.getSpiralPoint(t += dt, size, dxdy);
+        }
+        return false;
+    }
+
+    // Use mask-based collision detection.
+    private boolean cloudCollide(ProcessedWord tag, int[] board, int sw) {
+        sw >>= 5;
+        int[] sprite = tag.sprite;
+        int w = (int) tag.width >> 5;
+        int lx = (int) tag.x - (w << 4);
+        int sx = lx & 0x7f;
+        int msx = 32 - sx;
+        float h = tag.y1 - tag.y0;
+        int x = (int) (tag.y + tag.y0) * sw + (lx >> 5);
+        int last;
+        for (int j = 0; j < h; j++) {
             last = 0;
-            for (var i = 0; i <= w; i++) {
-              board[x + i] |= (last << msx) | (i < w ? (last = sprite[j * w + i]) >>> sx : 0);
+            for (int i = 0; i <= w; i++) {
+                int aa = ((last << msx) | (i < w ? (last = sprite[j * w + i]) >>> sx : 0))
+                        & board[x + i];
+                if (aa != 0) return true;
             }
             x += sw;
-          }
-          delete tag.sprite;
-          return true;
         }
-      }
+        return false;
     }
-    return false;
-  }
-         */
+
+    private boolean collideRects(ProcessedWord a, RectF b) {
+        return a.x + a.x1 > b.left && a.x + a.x0 < b.right && a.y + a.y1 > b.top && a.y + a.y0 < b.bottom;
     }
 
     private void cloudBounds(ProcessedWord d) {
-        /*
-        function cloudBounds(bounds, d) {
-  var b0 = bounds[0],
-      b1 = bounds[1];
-  if (d.x + d.x0 < b0.x) b0.x = d.x + d.x0;
-  if (d.y + d.y0 < b0.y) b0.y = d.y + d.y0;
-  if (d.x + d.x1 > b1.x) b1.x = d.x + d.x1;
-  if (d.y + d.y1 > b1.y) b1.y = d.y + d.y1;
-}
-         */
+        if (d.x + d.x0 < bounds.left) bounds.left = d.x + d.x0;
+        if (d.y + d.y0 < bounds.top) bounds.top = d.y + d.y0;
+        if (d.x + d.x1 > bounds.right) bounds.right = d.x + d.x1;
+        if (d.y + d.y1 > bounds.bottom) bounds.bottom = d.y + d.y1;
+    }
+
+    public void setWords(T... words) {
+        this.words = words;
     }
 
     private static class ProcessedWord implements Comparable {
@@ -348,7 +393,7 @@ public class WordCloud<T> {
         private float size;
         private float padding;
 
-        private SparseIntArray sprite = null;
+        private int[] sprite = null;
 
         private Paint paint;
 
