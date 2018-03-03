@@ -6,10 +6,10 @@
     android:layout_height="match_parent"
     tools:context="com.yashoid.wordcloud.sample.MainActivity">
 
-    <ImageView
-        android:id="@+id/image"
+    <com.yashoid.wordcloud.WordCloud
+        android:id="@+id/wordcloud"
         android:layout_width="match_parent"
-        android:layout_height="match_parent"
+        android:layout_height="240dp"
         app:layout_constraintBottom_toBottomOf="parent"
         app:layout_constraintLeft_toLeftOf="parent"
         app:layout_constraintRight_toRightOf="parent"

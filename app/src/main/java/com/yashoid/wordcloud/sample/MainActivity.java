@@ -4,20 +4,20 @@ import android.support.v7.app.AppCompatActivity;
 import android.os.Bundle;
 import android.widget.ImageView;
 
-import com.yashoid.wordcloud.WordDrawable;
+import com.yashoid.wordcloud.WordCloud;
 
 public class MainActivity extends AppCompatActivity {
 
-    private ImageView mImage;
+    private WordCloud mWordCloud;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
 
-        mImage = (ImageView) findViewById(R.id.image);
+        mWordCloud = (WordCloud) findViewById(R.id.wordcloud);
 
-        mImage.setImageDrawable(new WordDrawable());
+        mWordCloud.setAdapter(new SampleWordAdapter());
     }
 
 }

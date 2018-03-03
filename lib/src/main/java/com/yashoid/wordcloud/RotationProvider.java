@@ -4,17 +4,17 @@ package com.yashoid.wordcloud;
  * Created by Yashar on 02/24/2018.
  */
 
-public interface RotationProvider<T> {
+public interface RotationProvider {
 
     RotationProvider DEFAULT = new RotationProvider() {
 
         @Override
-        public double getRotation(Object word, int index) {
-            return Math.floor(((Math.random() * 6) - 3) * 30);
+        public float getRotation(int position, float progress) {
+            return (float) Math.floor(((Math.random() * 6) - 3) * 30 * (0.66f + progress / 3));
         }
 
     };
 
-    double getRotation(T word, int index);
+    float getRotation(int position, float progress);
 
 }

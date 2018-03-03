@@ -1,433 +1,366 @@
 package com.yashoid.wordcloud;
 
-import android.graphics.Bitmap;
+import android.annotation.TargetApi;
+import android.content.Context;
+import android.database.DataSetObserver;
 import android.graphics.Canvas;
+import android.graphics.Matrix;
 import android.graphics.Paint;
-import android.graphics.Point;
 import android.graphics.PointF;
-import android.graphics.Rect;
-import android.graphics.RectF;
 import android.graphics.Typeface;
-import android.os.Handler;
+import android.os.Build;
 import android.support.annotation.NonNull;
+import android.support.annotation.Nullable;
+import android.util.AttributeSet;
+import android.view.View;
 
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.Collections;
-import java.util.Random;
 
 /**
  * Created by Yashar on 02/24/2018.
  */
 
-public class WordCloud<T> {
+public class WordCloud extends View {
 
-    private static final double cloudRadians = Math.PI / 180;
-    private static final int cw = 1 << 11 >> 5;
-    private static final int ch = 1 << 11;
+    private static final int ROTATION_TRIES = 7;
+    private static final float SPIRAL_PROGRESS_STEP = 0.003f;
 
-    private static final Paint CLEAR_PAINT = new Paint();
+    private SpiralProvider mSpiralProvider = SpiralProvider.DEFAULT_SPIRAL;
+    private RotationProvider mRotationProvider = RotationProvider.DEFAULT;
 
-    static {
-        CLEAR_PAINT.setColor(0);
-        CLEAR_PAINT.setStyle(Paint.Style.FILL);
+    private WordAdapter mAdapter = null;
+    private ArrayList<Word> mWords = null;
+
+    private PointF mHPoint = new PointF();
+
+    private boolean mIsAttached = false;
+
+    public WordCloud(Context context) {
+        super(context);
+        initialize(context, null, 0, 0);
     }
 
-    public interface EventListener<T> {
+    public WordCloud(Context context, @Nullable AttributeSet attrs) {
+        super(context, attrs);
+        initialize(context, attrs, 0, 0);
+    }
 
-        void onWordPlaced(T word);
+    public WordCloud(Context context, @Nullable AttributeSet attrs, int defStyleAttr) {
+        super(context, attrs, defStyleAttr);
+        initialize(context, attrs, defStyleAttr, 0);
+    }
 
-        void onAllWordsPlaced();
+    @TargetApi(Build.VERSION_CODES.LOLLIPOP)
+    public WordCloud(Context context, @Nullable AttributeSet attrs, int defStyleAttr, int defStyleRes) {
+        super(context, attrs, defStyleAttr, defStyleRes);
+        initialize(context, attrs, defStyleAttr, defStyleRes);
+    }
+
+    private void initialize(Context context, @Nullable AttributeSet attrs, int defStyleAttr, int defStyleRes) {
 
     }
 
-    private EventListener<T> mEventListener = null;
+    public void setSpiralProvider(SpiralProvider spiralProvider) {
+        mSpiralProvider = spiralProvider;
 
-    private Point size = new Point(256, 256);
-    private TextProvider<T> text = TextProvider.DEFAULT;
-    private FontProvider<T> font = FontProvider.DEFAULT;
-    private TextSizeProvider<T> fontSize = TextSizeProvider.DEFAULT;
-    private RotationProvider<T> rotate = RotationProvider.DEFAULT;
-    private PaddingProvider<T> padding = PaddingProvider.DEFAULT;
-    private SpiralProvider spiral = SpiralProvider.ARCHIMEDEAN_SPIRAL;
-
-    private T[] words = null;
-
-    private long timeInterval = 0;
-    private Handler timer = null;
-
-    private Random random = new Random();
-
-    private Canvas canvas = null;
-    private Bitmap bitmap = null;
-
-
-    private int[] board = new int[(size.x >> 5) * size.y];
-    private RectF bounds = null;
-
-    private int n;
-    private int i;
-    private ArrayList<ProcessedWord> processedWords;
-
-    private ArrayList<ProcessedWord> tags;
-
-    public void setEventListener(EventListener<T> listener) {
-        mEventListener = listener;
+        requestLayout();
     }
 
-    public void setCanvas(Canvas canvas, Bitmap bitmap) {
-        this.canvas = canvas;
-        this.bitmap = bitmap;
+    public void setRotationProvider(RotationProvider rotationProvider) {
+        mRotationProvider = rotationProvider;
+
+        requestLayout();
     }
 
-    public WordCloud<T> start() {
-        board = new int[(size.x >> 5) * size.y];
-        bounds = null;
-
-        n = words.length;
-        i = -1;
-
-        tags = new ArrayList();
-        processedWords = processWords(words);
-        Collections.sort(processedWords);
-
-        if (timer != null) {
-            timer.removeCallbacks(step);
+    public void setAdapter(WordAdapter adapter) {
+        if (mAdapter != null) {
+            mAdapter.unregisterDataSetObserver(mDataSetObserver);
+            mAdapter = null;
         }
 
-        timer = new Handler();
-        timer.post(step);
+        mAdapter = adapter;
 
-        step.run();
-
-        return this;
-    }
-
-    public WordCloud<T> stop() {
-        if (timer != null) {
-            timer.removeCallbacks(step);
-            timer = null;
+        if (mIsAttached) {
+            mAdapter.registerDataSetObserver(mDataSetObserver);
         }
 
-        return this;
+        processWords();
+
+        requestLayout();
     }
 
-    private Runnable step = new Runnable() {
+    @Override
+    protected void onAttachedToWindow() {
+        super.onAttachedToWindow();
+
+        mIsAttached = true;
+
+        if (mAdapter != null) {
+            mAdapter.registerDataSetObserver(mDataSetObserver);
+        }
+    }
+
+    @Override
+    protected void onDetachedFromWindow() {
+        super.onDetachedFromWindow();
+
+        mIsAttached = false;
+
+        if (mAdapter != null) {
+            mAdapter.unregisterDataSetObserver(mDataSetObserver);
+        }
+    }
+
+    private DataSetObserver mDataSetObserver = new DataSetObserver() {
 
         @Override
-        public void run() {
-            long start = System.currentTimeMillis();
-
-            while ((timeInterval == 0 || System.currentTimeMillis() - start < timeInterval) && ++i < n && timer != null) {
-                ProcessedWord word = processedWords.get(i);
-                word.x = (int) (size.x * (random.nextFloat() + .5)) >> 1;
-                word.y = (int) (size.y * (random.nextFloat() + .5)) >> 1;
-                cloudSprite(word, i);
-                if (word.hasText() && place(word)) {
-                    tags.add(word);
-
-                    if (mEventListener != null) {
-                        mEventListener.onWordPlaced(words[i]);
-                    }
-
-                    if (bounds != null) {
-                        cloudBounds(word);
-                    }
-                    else {
-                        bounds = new RectF(word.x + word.x0, word.y + word.y0, word.x + word.x1, word.y + word.y1);
-                    }
-
-                    // Temporary hack
-                    word.x -= size.x >> 1;
-                    word.y -= size.y >> 1;
-                }
-            }
-
-            if (i >= n) {
-                stop();
-
-                if (mEventListener != null) {
-                    mEventListener.onAllWordsPlaced();
-                }
-            }
-            else if (timer != null) {
-                timer.post(step);
-            }
+        public void onChanged() {
+            processWords();
         }
 
     };
 
-    private ArrayList<ProcessedWord> processWords(T[] words) {
-        if (words == null) {
-            return new ArrayList<>();
+    private void processWords() {
+        mWords = new ArrayList<>(mAdapter.getCount());
+
+        for (int i = 0; i < mAdapter.getCount(); i++) {
+            mWords.add(new Word(mAdapter.getText(i), mAdapter.getFont(i), mAdapter.getTextSize(i), mAdapter.getPadding(i), mAdapter.getTextColor(i)));
         }
 
-        ArrayList<ProcessedWord> processedWords = new ArrayList(words.length);
+        Collections.sort(mWords);
 
-        for (int i = 0; i < words.length; i++) {
-            ProcessedWord pw = new ProcessedWord();
+        placeWords();
 
-            pw.text = text.getText(words[i], i);
-            pw.font = font.getFont(words[i], i);
-            pw.rotate = rotate.getRotation(words[i], i);
-            pw.size = fontSize.getTextSize(words[i], i);
-            pw.padding = padding.getPadding(words[i], i);
-
-            processedWords.add(pw);
-        }
-
-        return processedWords;
+        invalidate();
     }
 
-    // Fetches a monochrome sprite bitmap for the specified text.
-    // Load in batches for speed.
-    private void cloudSprite(ProcessedWord d, int di) {
-        if (d.sprite != null) {
+    @Override
+    protected void onLayout(boolean changed, int left, int top, int right, int bottom) {
+        super.onLayout(changed, left, top, right, bottom);
+
+        if (getWidth() > 0) {
+            placeWords();
+        }
+    }
+
+    private void placeWords() {
+        int width = getWidth();
+        int height = getHeight();
+
+        if (width == 0 || height == 0 || mWords == null) {
             return;
         }
 
-        Canvas c = canvas;
-        float ratio = (float) c.getWidth() / c.getHeight();
+        float t = 0;
 
-        c.drawRect(0, 0, (cw << 5) / ratio, ch / ratio, CLEAR_PAINT);
+        for (int i = 0; i < mWords.size(); i++) {
+            Word word = mWords.get(i);
 
-        int x = 0;
-        int y = 0;
-        int maxh = 0;
-
-        --di;
-
-        while (++di < n) {
-            c.save();
-
-            d.paint.setTypeface(d.font);
-            d.paint.setTextSize((d.size + 1) / ratio);
-
-            int w = (int) (d.paint.measureText(d.text + "m") * ratio);
-            int h = (int) d.size << 1;
-
-            if (d.rotate != 0) {
-                double sr = Math.sin(d.rotate * cloudRadians);
-                double cr = Math.cos(d.rotate * cloudRadians);
-                double wcr = w * cr;
-                double wsr = w * sr;
-                double hcr = h * cr;
-                double hsr = h * sr;
-
-                w = ((int) Math.max(Math.abs(wcr + hsr), Math.abs(wcr - hsr)) + 0x1f) >> 5 << 5;
-                h = (int) Math.max(Math.abs(wsr + hcr), Math.abs(wsr - hcr));
-            } else {
-                w = (w + 0x1f) >> 5 << 5;
-            }
-            if (h > maxh) maxh = h;
-            if (x + w >= (cw << 5)) {
-                x = 0;
-                y += maxh;
-                maxh = 0;
-            }
-            if (y + h >= ch) break;
-            c.translate((x + (w >> 1)) / ratio, (y + (h >> 1)) / ratio);
-            if (d.rotate != 0) {
-                c.rotate((float) (d.rotate * cloudRadians));
-            }
-            c.drawText(d.text, 0, 0, d.paint);
-
-            if (d.padding != 0) {
-                d.paint.setStyle(Paint.Style.STROKE);
-                d.paint.setStrokeWidth(2 * d.padding);
-                c.drawText(d.text, 0, 0, d.paint);
-                d.paint.setStyle(Paint.Style.FILL);
-            }
-            c.restore();
-            d.width = w;
-            d.height = h;
-            d.xoff = x;
-            d.yoff = y;
-            d.x1 = w >> 1;
-            d.y1 = h >> 1;
-            d.x0 = -d.x1;
-            d.y0 = -d.y1;
-            d.hasText = true;
-            x += w;
-        }
-
-        int pixelsWidth = (int) ((cw << 5) / ratio);
-        int pixelsHeight = (int) (ch / ratio);
-        int[] pixels = new int[pixelsWidth * pixelsHeight];
-        bitmap.getPixels(pixels, 0, 0, 0, 0, pixelsWidth, pixelsHeight);
-
-        int w = (int) d.width;
-        int w32 = w >> 5;
-        int h = (int) (d.y1 - d.y0);
-
-        int[] sprite = new int[h * w32];
-
-        while (--di >= 0) {
-            if (!d.hasText) continue;
-
-            x = (int) d.xoff;
-            //if (x == null) return;
-            y = (int) d.yoff;
-            int seen = 0;
-            int seenRow = -1;
-            for (int j = 0; j < h; j++) {
-                for (int i = 0; i < w; i++) {
-                    int k = w32 * j + (i >> 5);
-                    int m = pixels[((y + j) * (cw << 5) + (x + i)) << 2] != 0 ? 1 << (31 - (i % 32)) : 0;
-                    sprite[k] = sprite[k] | m;
-                    seen |= m;
-                }
-                if (seen != 0) seenRow = j;
-                else {
-                    d.y0++;
-                    h--;
-                    j--;
-                    y++;
-                }
-            }
-            d.y1 = d.y0 + seenRow;
-
-            d.sprite = Arrays.copyOfRange(sprite, 0, (int) (d.y1 - d.y0) * w32);
+            t = placeWord(word, i, 0);
         }
     }
 
-    private boolean place(ProcessedWord tag) {
-        Rect perimeter = new Rect(0, 0, size.x, size.y);
-        float startX = tag.x;
-        float startY = tag.y;
+    private float placeWord(Word word, int index, float t) {
+        while (t < 1) {
+            mSpiralProvider.getSpiralPoint(t, getWidth(), getHeight(), mHPoint);
 
-        double maxDelta = PointF.length(size.x, size.y);
+            word.x = mHPoint.x;
+            word.y = mHPoint.y;
 
-//        s = spiral(size),
-        float dt = Math.random() < .5 ? 1 : -1;
-        float t = -dt;
-        PointF dxdy = new PointF();
-        int dx;
-        int dy;
+            for (int i = 0; i < ROTATION_TRIES; i++) {
+                word.rotation = mRotationProvider.getRotation(index, (float) index / mWords.size());
 
-        spiral.getSpiralPoint(t += dt, size, dxdy);
+                word.isMeasured = false;
 
-        while (dxdy != null) { // TODO WHAT?!
-            dx = (int) dxdy.x;
-            dy = (int) dxdy.y;
+                boolean success = true;
 
-            if (Math.min(Math.abs(dx), Math.abs(dy)) >= maxDelta) break;
-
-            tag.x = startX + dx;
-            tag.y = startY + dy;
-
-            if (tag.x + tag.x0 < 0 || tag.y + tag.y0 < 0 ||
-              tag.x + tag.x1 > size.x || tag.y + tag.y1 > size.y) continue;
-            // TODO only check for collisions within current bounds.
-            if ((bounds == null || bounds.isEmpty()) || !cloudCollide(tag, board, size.x)) {
-                if ((bounds == null || bounds.isEmpty()) || collideRects(tag, bounds)) {
-                    int[] sprite = tag.sprite;
-                    int w = (int) tag.width >> 5;
-                    int sw = size.x >> 5;
-                    int lx = (int) tag.x - (w << 4);
-                    int sx = lx & 0x7f;
-                    int msx = 32 - sx;
-                    float h = tag.y1 - tag.y0;
-                    int x = (int) (tag.y + tag.y0) * sw + (lx >> 5);
-                    int last;
-                    for (int j = 0; j < h; j++) {
-                    last = 0;
-                    for (int i = 0; i <= w; i++) {
-                      board[x + i] |= (last << msx) | (i < w ? (last = sprite[j * w + i]) >>> sx : 0);
+                for (int wIndex = 0; wIndex < index; wIndex++) {
+                    if (word.collides(mWords.get(wIndex))) {
+                        success = false;
+                        break;
                     }
-                    x += sw;
-                    }
-                    tag.sprite = null;
-                    return true;
+                }
+
+                if (success) {
+                    return t;
                 }
             }
 
-            spiral.getSpiralPoint(t += dt, size, dxdy);
+            t += SPIRAL_PROGRESS_STEP;
         }
-        return false;
+
+        return t;
     }
 
-    // Use mask-based collision detection.
-    private boolean cloudCollide(ProcessedWord tag, int[] board, int sw) {
-        sw >>= 5;
-        int[] sprite = tag.sprite;
-        int w = (int) tag.width >> 5;
-        int lx = (int) tag.x - (w << 4);
-        int sx = lx & 0x7f;
-        int msx = 32 - sx;
-        float h = tag.y1 - tag.y0;
-        int x = (int) (tag.y + tag.y0) * sw + (lx >> 5);
-        int last;
-        for (int j = 0; j < h; j++) {
-            last = 0;
-            for (int i = 0; i <= w; i++) {
-                int aa = ((last << msx) | (i < w ? (last = sprite[j * w + i]) >>> sx : 0))
-                        & board[x + i];
-                if (aa != 0) return true;
+    @Override
+    protected void onDraw(Canvas canvas) {
+        super.onDraw(canvas);
+
+        if (mWords != null) {
+            for (Word word: mWords) {
+                word.draw(canvas);
             }
-            x += sw;
         }
-        return false;
     }
 
-    private boolean collideRects(ProcessedWord a, RectF b) {
-        return a.x + a.x1 > b.left && a.x + a.x0 < b.right && a.y + a.y1 > b.top && a.y + a.y0 < b.bottom;
-    }
-
-    private void cloudBounds(ProcessedWord d) {
-        if (d.x + d.x0 < bounds.left) bounds.left = d.x + d.x0;
-        if (d.y + d.y0 < bounds.top) bounds.top = d.y + d.y0;
-        if (d.x + d.x1 > bounds.right) bounds.right = d.x + d.x1;
-        if (d.y + d.y1 > bounds.bottom) bounds.bottom = d.y + d.y1;
-    }
-
-    public void setWords(T... words) {
-        this.words = words;
-    }
-
-    private static class ProcessedWord implements Comparable {
+    private static class Word implements Comparable {
 
         private String text;
-        private Typeface font;
-        private double rotate;
-        private float size;
-        private float padding;
-
-        private int[] sprite = null;
 
         private Paint paint;
-
-        private float x;
-        private float y;
-
-        private boolean hasText = false;
 
         private float width;
         private float height;
 
-        private float xoff;
-        private float yoff;
+        private float x;
+        private float y;
+        private float rotation;
 
-        private float x0;
-        private float y0;
+        private boolean isMeasured = false;
+        private PointF[] points = new PointF[4];
 
-        private float x1;
-        private float y1;
+        private Matrix matrix = new Matrix();
+        private float[] matPoints = new float[8];
 
-        protected ProcessedWord() {
+        protected Word(String text, Typeface font, float textSize, float padding, int textColor) {
+            this.text = text;
+
             paint = new Paint();
+            paint.setAntiAlias(true);
             paint.setStyle(Paint.Style.FILL);
+            paint.setTextAlign(Paint.Align.CENTER);
+
+            paint.setColor(textColor);
+            paint.setTextSize(textSize);
+
+            if (font != null) {
+                paint.setTypeface(font);
+            }
+
+            width = paint.measureText(text) + 2 * padding;
+            height = paint.getFontMetrics().bottom - paint.getFontMetrics().top + 2 * padding;
+
+            for (int i = 0; i < points.length; i++) {
+                points[i] = new PointF();
+            }
         }
 
-        protected boolean hasText() {
-            return hasText;
+        protected boolean collides(Word word) {
+            if (!isMeasured) {
+                measure();
+                isMeasured = true;
+            }
+
+            if (!word.isMeasured) {
+                word.measure();
+                word.isMeasured = true;
+            }
+
+            return arePolygonsIntersecting(points, word.points);
+        }
+
+        private void measure() {
+            points[0].set(-width/2, -height/2);
+            points[1].set(-points[0].x, points[0].y);
+            points[2].set(points[1].x, -points[1].y);
+            points[3].set(-points[2].x, points[2].y);
+
+            Matrix matrix = new Matrix();
+            matrix.setRotate(rotation);
+
+            for (int i = 0; i < 4; i++) {
+                matPoints[i*2] = points[i].x;
+                matPoints[i*2 + 1] = points[i].y;
+            }
+
+            matrix.mapPoints(matPoints);
+
+            for (int i = 0; i < 4; i++) {
+                points[i].x = x + matPoints[i*2];
+                points[i].y = y + matPoints[i*2 + 1];
+            }
+        }
+
+        protected void draw(Canvas canvas) {
+            Paint.FontMetrics fm = paint.getFontMetrics();
+
+            canvas.save();
+            canvas.translate(x, y);
+            canvas.rotate(rotation);
+            canvas.drawText(text, 0, -(fm.ascent + fm.descent) / 2, paint);
+//            canvas.drawRect(-width/2, -height/2, width/2, height/2, p);
+            canvas.restore();
         }
 
         @Override
         public int compareTo(@NonNull Object o) {
-            return (int) ((((ProcessedWord) o).size) - size);
+            return (int) ((((Word) o).paint.getTextSize()) - paint.getTextSize());
         }
 
+    }
+
+    private static PointF[][] polygons = new PointF[2][];
+
+    private static boolean arePolygonsIntersecting(PointF[] a, PointF[] b) {
+        polygons[0] = a;
+        polygons[1] = b;
+
+        for (int i = 0; i < polygons.length; i++) {
+
+            // for each polygon, look at each edge of the polygon, and determine if it separates
+            // the two shapes
+            PointF[] polygon = polygons[i];
+
+            for (int i1 = 0; i1 < polygon.length; i1++) {
+
+                // grab 2 vertices to create an edge
+                int i2 = (i1 + 1) % polygon.length;
+                PointF p1 = polygon[i1];
+                PointF p2 = polygon[i2];
+
+                // find the line perpendicular to this edge
+                PointF normal = new PointF(p2.y - p1.y, p1.x - p2.x);
+
+                float minA = Float.MAX_VALUE;
+                float maxA = Float.MIN_VALUE;
+
+                // for each vertex in the first shape, project it onto the line perpendicular to the edge
+                // and keep track of the min and max of these values
+                for (int j = 0; j < polygons[0].length; j++) {
+                    float projected = normal.x * polygons[0][j].x + normal.y * polygons[0][j].y;
+                    if (projected < minA) {
+                        minA = projected;
+                    }
+                    if (projected > maxA) {
+                        maxA = projected;
+                    }
+                }
+
+                // for each vertex in the second shape, project it onto the line perpendicular to the edge
+                // and keep track of the min and max of these values
+                float minB = Float.MAX_VALUE;
+                float maxB = Float.MIN_VALUE;
+
+                for (int j = 0; j < polygons[1].length; j++) {
+                    float projected = normal.x * polygons[1][j].x + normal.y * polygons[1][j].y;
+                    if (projected < minB) {
+                        minB = projected;
+                    }
+                    if (projected > maxB) {
+                        maxB = projected;
+                    }
+                }
+
+                // if there is no overlap between the projects, the edge we are looking at separates the two
+                // polygons, and we know there is no overlap
+                if (maxA < minB || maxB < minA) {
+                    // polygons don't intersect!
+                    return false;
+                }
+            }
+        }
+        return true;
     }
 
 }
