@@ -1,18 +1,43 @@
 apply plugin: 'com.android.library'
 
+ext {
+    bintrayRepo = 'YashoidLibraries'
+    bintrayName = 'wordcloud'
+
+    publishedGroupId = 'com.yashoid'
+    libraryName = 'WordCloud'
+    artifact = 'wordcloud'
+
+    libraryDescription = 'WordCloud stacks pieces of text in a way that they occupy minimum space while not colliding with eachother.'
+
+    siteUrl = 'https://github.com/yasharpm/WordCloud'
+    gitUrl = 'https://github.com/yasharpm/WordCloud.git'
+
+    libraryVersion = '1.0.0'
+
+    developerId = 'yasharpm'
+    developerName = 'Yashar PourMohammad'
+    developerEmail = 'yasharpm@gmail.com'
+
+    licenseName = 'The Apache Software License, Version 2.0'
+    licenseUrl = 'http://www.apache.org/licenses/LICENSE-2.0.txt'
+    allLicenses = ["Apache-2.0"]
+}
+
 android {
-    compileSdkVersion 26
-
-
+    compileSdkVersion 24
+    buildToolsVersion '26.0.2'
 
     defaultConfig {
-        minSdkVersion 15
-        targetSdkVersion 26
+        minSdkVersion 11
+        targetSdkVersion 21
         versionCode 1
         versionName "1.0"
 
-        testInstrumentationRunner "android.support.test.runner.AndroidJUnitRunner"
-
+        compileOptions {
+            sourceCompatibility JavaVersion.VERSION_1_8
+            targetCompatibility JavaVersion.VERSION_1_8
+        }
     }
 
     buildTypes {
@@ -22,13 +47,7 @@ android {
         }
     }
 
-}
+    apply from: 'https://raw.githubusercontent.com/nuuneoi/JCenter/master/installv1.gradle'
+    apply from: 'https://raw.githubusercontent.com/nuuneoi/JCenter/master/bintrayv1.gradle'
 
-dependencies {
-    implementation fileTree(dir: 'libs', include: ['*.jar'])
-
-    implementation 'com.android.support:appcompat-v7:26.0.0-alpha1'
-    testImplementation 'junit:junit:4.12'
-    androidTestImplementation 'com.android.support.test:runner:0.5'
-    androidTestImplementation 'com.android.support.test.espresso:espresso-core:2.2.2'
 }

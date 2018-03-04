@@ -9,8 +9,6 @@ import android.graphics.Paint;
 import android.graphics.PointF;
 import android.graphics.Typeface;
 import android.os.Build;
-import android.support.annotation.NonNull;
-import android.support.annotation.Nullable;
 import android.util.AttributeSet;
 import android.view.View;
 
@@ -41,23 +39,23 @@ public class WordCloud extends View {
         initialize(context, null, 0, 0);
     }
 
-    public WordCloud(Context context, @Nullable AttributeSet attrs) {
+    public WordCloud(Context context, AttributeSet attrs) {
         super(context, attrs);
         initialize(context, attrs, 0, 0);
     }
 
-    public WordCloud(Context context, @Nullable AttributeSet attrs, int defStyleAttr) {
+    public WordCloud(Context context, AttributeSet attrs, int defStyleAttr) {
         super(context, attrs, defStyleAttr);
         initialize(context, attrs, defStyleAttr, 0);
     }
 
     @TargetApi(Build.VERSION_CODES.LOLLIPOP)
-    public WordCloud(Context context, @Nullable AttributeSet attrs, int defStyleAttr, int defStyleRes) {
+    public WordCloud(Context context, AttributeSet attrs, int defStyleAttr, int defStyleRes) {
         super(context, attrs, defStyleAttr, defStyleRes);
         initialize(context, attrs, defStyleAttr, defStyleRes);
     }
 
-    private void initialize(Context context, @Nullable AttributeSet attrs, int defStyleAttr, int defStyleRes) {
+    private void initialize(Context context, AttributeSet attrs, int defStyleAttr, int defStyleRes) {
 
     }
 
@@ -294,7 +292,7 @@ public class WordCloud extends View {
         }
 
         @Override
-        public int compareTo(@NonNull Object o) {
+        public int compareTo(Object o) {
             return (int) ((((Word) o).paint.getTextSize()) - paint.getTextSize());
         }
 
