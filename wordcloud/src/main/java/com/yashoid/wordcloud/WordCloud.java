@@ -10,6 +10,8 @@ import android.graphics.PointF;
 import android.graphics.Typeface;
 import android.os.Build;
 import android.util.AttributeSet;
+import android.view.GestureDetector;
+import android.view.MotionEvent;
 import android.view.View;
 
 import java.util.ArrayList;
@@ -24,6 +26,12 @@ public class WordCloud extends View {
     private static final int ROTATION_TRIES = 7;
     private static final float SPIRAL_PROGRESS_STEP = 0.003f;
 
+    public interface OnWordClickListener {
+
+        void onWordClicked(int position, Word word);
+
+    }
+
     private SpiralProvider mSpiralProvider = SpiralProvider.DEFAULT_SPIRAL;
     private RotationProvider mRotationProvider = RotationProvider.DEFAULT;
 
@@ -33,6 +41,10 @@ public class WordCloud extends View {
     private PointF mHPoint = new PointF();
 
     private boolean mIsAttached = false;
+
+    private GestureDetector mGestureDetector;
+
+    private OnWordClickListener mOnWordClickListener = null;
 
     public WordCloud(Context context) {
         super(context);
@@ -56,7 +68,11 @@ public class WordCloud extends View {
     }
 
     private void initialize(Context context, AttributeSet attrs, int defStyleAttr, int defStyleRes) {
+        mGestureDetector = new GestureDetector(context, mOnGestureListener);
+    }
 
+    public void setOnWordClickListener(OnWordClickListener listener) {
+        mOnWordClickListener = listener;
     }
 
     public void setSpiralProvider(SpiralProvider spiralProvider) {
@@ -123,7 +139,7 @@ public class WordCloud extends View {
         mWords = new ArrayList<>(mAdapter.getCount());
 
         for (int i = 0; i < mAdapter.getCount(); i++) {
-            mWords.add(new Word(mAdapter.getText(i), mAdapter.getFont(i), mAdapter.getTextSize(i), mAdapter.getPadding(i), mAdapter.getTextColor(i)));
+            mWords.add(new Word(i, mAdapter.getText(i), mAdapter.getFont(i), mAdapter.getTextSize(i), mAdapter.getPadding(i), mAdapter.getTextColor(i)));
         }
 
         Collections.sort(mWords);
@@ -160,6 +176,8 @@ public class WordCloud extends View {
     }
 
     private float placeWord(Word word, int index, float t) {
+        word.isPlaced = false;
+
         while (t < 1) {
             mSpiralProvider.getSpiralPoint(t, getWidth(), getHeight(), mHPoint);
 
@@ -181,6 +199,8 @@ public class WordCloud extends View {
                 }
 
                 if (success) {
+                    word.isPlaced = true;
+
                     return t;
                 }
             }
@@ -202,7 +222,61 @@ public class WordCloud extends View {
         }
     }
 
-    private static class Word implements Comparable {
+    @Override
+    public boolean onTouchEvent(MotionEvent event) {
+        return mGestureDetector.onTouchEvent(event);
+    }
+
+    private GestureDetector.OnGestureListener mOnGestureListener = new GestureDetector.OnGestureListener() {
+
+        @Override
+        public boolean onDown(MotionEvent motionEvent) {
+            return mOnWordClickListener != null;
+        }
+
+        @Override
+        public void onShowPress(MotionEvent motionEvent) { }
+
+        @Override
+        public boolean onSingleTapUp(MotionEvent motionEvent) {
+            if (mWords == null) {
+                return false;
+            }
+
+            float x = motionEvent.getX();
+            float y = motionEvent.getY();
+
+            for (Word word: mWords) {
+                if (word.contains(x, y)) {
+                    if (mOnWordClickListener != null) {
+                        mOnWordClickListener.onWordClicked(word.position, word);
+                    }
+
+                    return true;
+                }
+            }
+
+            return true;
+        }
+
+        @Override
+        public boolean onScroll(MotionEvent motionEvent, MotionEvent motionEvent1, float v, float v1) {
+            return false;
+        }
+
+        @Override
+        public void onLongPress(MotionEvent motionEvent) { }
+
+        @Override
+        public boolean onFling(MotionEvent motionEvent, MotionEvent motionEvent1, float v, float v1) {
+            return false;
+        }
+
+    };
+
+    public static class Word implements Comparable {
+
+        private int position;
 
         private String text;
 
@@ -218,10 +292,14 @@ public class WordCloud extends View {
         private boolean isMeasured = false;
         private PointF[] points = new PointF[4];
 
+        private boolean isPlaced = false;
+
         private Matrix matrix = new Matrix();
         private float[] matPoints = new float[8];
 
-        protected Word(String text, Typeface font, float textSize, float padding, int textColor) {
+        protected Word(int position, String text, Typeface font, float textSize, float padding, int textColor) {
+            this.position = position;
+
             this.text = text;
 
             paint = new Paint();
@@ -258,6 +336,32 @@ public class WordCloud extends View {
             return arePolygonsIntersecting(points, word.points);
         }
 
+        protected boolean contains(float x, float y) {
+            float origX = x;
+            float origY = y;
+
+            x -= this.x;
+            y -= this.y;
+
+            float innerSize = Math.min(width, height) / 2;
+
+            if (Math.abs(x) < innerSize && Math.abs(y) < innerSize) {
+                return true;
+            }
+
+            float sin = (float) Math.sin(-rotation / 180 * Math.PI);
+            float cos = (float) Math.cos(-rotation / 180 * Math.PI);
+
+            float newX = x * cos - y * sin;
+            float newY = x * sin + y * cos;
+
+            if ((Math.abs(newX) < width / 2 && Math.abs(newY) < height / 2)) {
+                return true;
+            }
+
+            return (Math.abs(newX) < width / 2 && Math.abs(newY) < height / 2);
+        }
+
         private void measure() {
             points[0].set(-width/2, -height/2);
             points[1].set(-points[0].x, points[0].y);
@@ -281,6 +385,10 @@ public class WordCloud extends View {
         }
 
         protected void draw(Canvas canvas) {
+            if (!isPlaced) {
+                return;
+            }
+
             Paint.FontMetrics fm = paint.getFontMetrics();
 
             canvas.save();
@@ -294,6 +402,22 @@ public class WordCloud extends View {
         @Override
         public int compareTo(Object o) {
             return (int) ((((Word) o).paint.getTextSize()) - paint.getTextSize());
+        }
+
+        public float getX() {
+            return x;
+        }
+
+        public float getY() {
+            return y;
+        }
+
+        public String getText() {
+            return text;
+        }
+
+        public boolean isPlaced() {
+            return isPlaced;
         }
 
     }

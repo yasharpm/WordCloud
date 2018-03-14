@@ -2,9 +2,12 @@
 <project version="4">
   <component name="ProjectModuleManager">
     <modules>
+      <module fileurl="file://$PROJECT_DIR$/WordCloud.iml" filepath="$PROJECT_DIR$/WordCloud.iml" />
       <module fileurl="file://$PROJECT_DIR$/app/app.iml" filepath="$PROJECT_DIR$/app/app.iml" />
-      <module fileurl="file://$PROJECT_DIR$/wordCloud.iml" filepath="$PROJECT_DIR$/wordCloud.iml" />
-      <module fileurl="file://$PROJECT_DIR$/wordcloud/lib.iml" filepath="$PROJECT_DIR$/wordcloud/lib.iml" />
+      <module fileurl="file://F:\Yashoid\Libraries\WordCloud\app\app.iml" filepath="F:\Yashoid\Libraries\WordCloud\app\app.iml" />
+      <module fileurl="file://F:\Yashoid\Libraries\WordCloud\wordcloud\lib.iml" filepath="F:\Yashoid\Libraries\WordCloud\wordcloud\lib.iml" />
+      <module fileurl="file://F:\Yashoid\Libraries\WordCloud\wordCloud.iml" filepath="F:\Yashoid\Libraries\WordCloud\wordCloud.iml" />
+      <module fileurl="file://$PROJECT_DIR$/wordcloud/wordcloud.iml" filepath="$PROJECT_DIR$/wordcloud/wordcloud.iml" />
     </modules>
   </component>
 </project>
