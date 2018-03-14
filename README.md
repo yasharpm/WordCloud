@@ -12,6 +12,6 @@ Check sample code to learn how to use it with default configuration.
 Add the dependency:
 ```Groovy
 dependencies {
-	compile 'com.yashoid:wordcloud:1.0.0'
+	compile 'com.yashoid:wordcloud:1.1.0'
 }
 ```
